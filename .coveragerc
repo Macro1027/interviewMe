@@ -1,0 +1,47 @@
+[run]
+source = src
+omit =
+    # Omit tests
+    */tests/*
+    # Omit third-party packages
+    */venv/*
+    */dist-packages/*
+    */site-packages/*
+    # Omit generated files
+    */__pycache__/*
+    *.pyc
+    # Omit specific files
+    */setup.py
+    */conftest.py
+    */migrations/*
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+
+    # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run:
+    if 0:
+    if __name__ == .__main__.:
+    pass
+    
+    # Don't complain about abstract methods, they aren't run:
+    @(abc\.)?abstractmethod
+
+# Fail under if coverage is below the threshold
+fail_under = 80
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml 

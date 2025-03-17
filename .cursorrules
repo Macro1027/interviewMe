@@ -1,0 +1,64 @@
+# CursorRules
+
+# Project: AI Interview Simulation Platform
+# Goal: Help candidates improve interview performance through authentic AI interviewing simulations
+
+# Code Structure Rules
+- Follow the directory structure as defined in the project plan
+- Separate AI components (speech, NLP, emotion analysis) into distinct modules
+- Implement interfaces for all AI service integrations to allow for easy provider switching
+- Use dependency injection for all services to facilitate testing
+- Ensure the AI has read-only access to the entire codebase at all times
+
+# Naming Conventions
+- Use camelCase for variables and functions in JavaScript/TypeScript
+- Use snake_case for Python variables and functions
+- Use PascalCase for class names across all languages
+- Prefix interface names with "I" (e.g., ISpeechRecognitionService)
+- Suffix service implementations with "Service" (e.g., GoogleSpeechRecognitionService)
+
+# AI Component Rules
+- All AI models must implement fallback mechanisms for API failures
+- Cache API responses where appropriate to reduce latency and costs
+- Log all AI model inputs/outputs for debugging and improvement
+- Implement A/B testing capabilities for comparing different AI models
+- Allow the AI to scan the codebase to identify unused or deprecated code
+- Allow the AI to suggest improvements for model integration points
+
+# Testing Requirements
+- Minimum 80% code coverage for core functionality
+- Mock all external API calls in unit tests
+- Include integration tests for all AI service integrations
+- Create end-to-end tests for complete interview flows
+- Allow the AI to automatically run test suites after every commit using CI/CD pipelines
+- Allow the AI to generate coverage reports and highlight untested areas
+
+# Performance Standards
+- Maximum 200ms latency for speech recognition responses
+- Maximum 500ms latency for NLP model responses
+- Optimize all API calls to minimize token usage
+- Support concurrent interviews (minimum 100 simultaneous sessions)
+- Allow the AI to continuously monitor performance metrics across modules
+- Allow the AI to suggest optimizations in real-time
+
+# Security and Privacy
+- Encrypt all candidate data at rest and in transit
+- Implement automatic data purging after defined retention periods
+- Use principle of least privilege for all API access
+- Document all data flows for compliance reviews
+- Allow the AI to audit the codebase periodically for security standards
+- Allow the AI to detect hardcoded secrets or keys and flag them immediately
+
+# Documentation Requirements
+- Document all AI model parameters and configurations
+- Create API documentation for all endpoints
+- Include inline comments for complex algorithms
+- Maintain a changelog for all model versions and improvements
+- Allow the AI to automatically generate documentation updates
+- Allow the AI to suggest improvements in documentation clarity
+
+# Continuous Codebase Access by AI
+- The AI must have read-only access to the entire codebase at all times
+- Implement safeguards to ensure the AI cannot modify code without approval
+- Maintain logs of all actions taken by the AI on the codebase
+- Integrate tools like GitHub Actions with AI-driven assistants for automated insights

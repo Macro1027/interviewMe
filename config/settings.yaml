@@ -1,0 +1,47 @@
+# Global settings
+
+# Environment settings
+environment: development  # Options: development, testing, production
+
+# Application settings
+application:
+  name: "AI Project"
+  version: "0.1.0"
+  log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  
+# API settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+  allowed_origins:
+    - "http://localhost:3000"
+    - "https://yourdomain.com"
+
+# Database settings
+database:
+  type: "postgres"  # Options: sqlite, postgres, mysql
+  host: "localhost"
+  port: 5432
+  name: "aiproject"
+  user: "dbuser"
+  password: "${DB_PASSWORD}"  # Use environment variable
+
+# Storage settings
+storage:
+  data_dir: "./data"
+  models_dir: "./models"
+  temp_dir: "/tmp/aiproject"
+
+# AI model settings
+ai:
+  default_model: "gpt-4"
+  openai_api_key: "${OPENAI_API_KEY}"  # Use environment variable
+  model_timeout: 30  # in seconds
+  
+# Paths
+paths:
+  raw_data: "./data/raw"
+  processed_data: "./data/processed"
+  logs: "./logs"
+  reports: "./reports"

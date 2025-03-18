@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """
-Example script demonstrating how to use the simplified LLM service.
+Example script demonstrating how to use the consolidated LLM module.
 
-This script shows how to generate completions and chat responses
-using the direct LLM service without the factory pattern.
+This script shows how to generate completions, chat responses, and use
+the higher-level utility functions for interview tasks.
 
 Usage:
     python -m src.ai.examples.llm_example
@@ -17,16 +17,21 @@ import sys
 # Add project root to Python path if needed
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
 
-from src.ai.services import get_llm_service
+from src.ai.llm import (
+    get_llm_service, 
+    generate_interview_question,
+    evaluate_interview_answer,
+    generate_follow_up_question
+)
 from src.utils.logger import setup_logger
 
 # Set up logger
 logger = setup_logger("llm_example")
 
 
-async def test_completion():
-    """Test the text completion functionality."""
-    logger.info("Testing LLM text completion...")
+async def test_basic_completion():
+    """Test the basic text completion functionality."""
+    logger.info("Testing basic LLM text completion...")
     
     # Get the LLM service
     service = get_llm_service()
@@ -69,6 +74,48 @@ async def test_chat_completion():
     return response
 
 
+async def test_interview_utilities():
+    """Test the higher-level interview utility functions."""
+    logger.info("Testing interview utility functions...")
+    
+    # Generate an interview question
+    topic = "Python concurrency"
+    difficulty = "hard"
+    question = await generate_interview_question(topic, difficulty)
+    logger.info(f"Generated {difficulty} question about {topic}:")
+    logger.info(question)
+    
+    # Simulate a candidate's answer (in a real scenario, this would come from the user)
+    answer = (
+        "Python offers several concurrency models. The threading module provides threads, but "
+        "these are limited by the Global Interpreter Lock (GIL) which prevents true parallel execution "
+        "of Python code. For I/O-bound tasks, asyncio offers event-driven concurrency with coroutines. "
+        "For CPU-bound tasks, the multiprocessing module bypasses the GIL by creating separate processes. "
+        "Each approach has its own use cases and trade-offs regarding memory usage, complexity, and performance."
+    )
+    logger.info(f"Simulated answer: {answer}")
+    
+    # Evaluate the answer
+    evaluation = await evaluate_interview_answer(question, answer)
+    logger.info("Evaluation of the answer:")
+    logger.info(f"Score: {evaluation.get('score')}/10")
+    logger.info(f"Feedback: {evaluation.get('feedback')}")
+    logger.info(f"Strengths: {evaluation.get('strengths')}")
+    logger.info(f"Weaknesses: {evaluation.get('weaknesses')}")
+    
+    # Generate a follow-up question
+    follow_up = await generate_follow_up_question(question, answer)
+    logger.info("Follow-up question:")
+    logger.info(follow_up)
+    
+    return {
+        "question": question,
+        "answer": answer,
+        "evaluation": evaluation,
+        "follow_up": follow_up
+    }
+
+
 async def main():
     """Run all examples."""
     try:
@@ -81,10 +128,14 @@ async def main():
             logger.error("Please set this variable before running the example.")
             return
         
-        # Run the examples
-        await test_completion()
+        # Run the basic examples
+        await test_basic_completion()
         print("\n" + "-" * 50 + "\n")
         await test_chat_completion()
+        print("\n" + "-" * 50 + "\n")
+        
+        # Run the interview utilities example
+        await test_interview_utilities()
         
     except Exception as e:
         logger.error(f"Error running example: {e}")

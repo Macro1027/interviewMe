@@ -1,8 +1,8 @@
 """
-AI services for the interview platform.
+Language Model (LLM) services for the interview platform.
 
-This module provides direct access to AI capabilities without using the factory pattern.
-The implementation uses Perplexity for language model capabilities.
+This module provides direct access to LLM capabilities using Perplexity API.
+All LLM functionality is consolidated in this single file.
 """
 from typing import Dict, List, Optional, Union, Any
 import aiohttp
@@ -152,36 +152,95 @@ def get_llm_service() -> LLMService:
     return _llm_service
 
 
-# Placeholder functions for other AI services that will be implemented later
-# These follow the same simplified pattern without using the factory
-
-def get_speech_recognition_service():
+# Utility functions for common LLM tasks
+async def generate_interview_question(topic: str, difficulty: str = "medium") -> str:
     """
-    Get the speech recognition service.
-    This will be implemented with a specific provider later.
+    Generate an interview question on a specific topic with specified difficulty.
+    
+    Args:
+        topic: The topic for the interview question (e.g., "Python", "Algorithms", "System Design")
+        difficulty: The difficulty level ("easy", "medium", "hard")
+        
+    Returns:
+        str: Generated interview question
     """
-    raise NotImplementedError("Speech recognition service not yet implemented")
-
-
-def get_speech_synthesis_service():
-    """
-    Get the speech synthesis service.
-    This will be implemented with a specific provider later.
-    """
-    raise NotImplementedError("Speech synthesis service not yet implemented")
-
-
-def get_sentiment_analysis_service():
-    """
-    Get the sentiment analysis service.
-    This will be implemented with a specific provider later.
-    """
-    raise NotImplementedError("Sentiment analysis service not yet implemented")
+    llm = get_llm_service()
+    
+    prompt = (
+        f"Generate a {difficulty} difficulty interview question about {topic}. "
+        f"The question should be challenging but clear, and test the candidate's knowledge and problem-solving skills. "
+        f"Include only the question, without any additional explanation or answer."
+    )
+    
+    return await llm.generate_completion(prompt, max_tokens=300)
 
 
-def get_embedding_service():
+async def evaluate_interview_answer(question: str, answer: str) -> Dict[str, Any]:
     """
-    Get the embedding service.
-    This will be implemented with a specific provider later.
+    Evaluate a candidate's answer to an interview question.
+    
+    Args:
+        question: The interview question that was asked
+        answer: The candidate's answer to evaluate
+        
+    Returns:
+        Dict[str, Any]: Evaluation results including score, feedback, and areas of improvement
     """
-    raise NotImplementedError("Embedding service not yet implemented") 
+    llm = get_llm_service()
+    
+    prompt = (
+        "You are an expert interviewer evaluating a candidate's response. "
+        "Provide a detailed but concise evaluation of the answer based on accuracy, "
+        "completeness, clarity, and depth of understanding.\n\n"
+        f"Question: {question}\n\n"
+        f"Candidate's Answer: {answer}\n\n"
+        "Provide your evaluation in JSON format with the following fields:\n"
+        "- score (0-10)\n"
+        "- feedback (brief general feedback)\n"
+        "- strengths (list of strong points)\n"
+        "- weaknesses (list of areas for improvement)\n"
+        "- suggestions (specific tips for improvement)"
+    )
+    
+    response = await llm.generate_completion(prompt, max_tokens=500)
+    
+    # This is a simple implementation - in practice, you'd want to properly parse the JSON
+    # and handle potential parsing errors
+    import json
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to parse evaluation as JSON: {response}")
+        # Return a basic structure if parsing fails
+        return {
+            "score": 5,
+            "feedback": "Unable to parse detailed evaluation. The response was: " + response[:100] + "...",
+            "strengths": [],
+            "weaknesses": ["Unable to analyze properly"],
+            "suggestions": ["Please try again or rephrase your answer"]
+        }
+
+
+async def generate_follow_up_question(question: str, answer: str) -> str:
+    """
+    Generate a follow-up question based on the candidate's answer.
+    
+    Args:
+        question: The original interview question
+        answer: The candidate's answer
+        
+    Returns:
+        str: A follow-up question to probe deeper or clarify the candidate's understanding
+    """
+    llm = get_llm_service()
+    
+    prompt = (
+        "You are an expert technical interviewer. Based on the candidate's answer to the previous question, "
+        "generate a thoughtful follow-up question that probes deeper into the topic or explores "
+        "related areas to better assess the candidate's knowledge and understanding.\n\n"
+        f"Original Question: {question}\n\n"
+        f"Candidate's Answer: {answer}\n\n"
+        "Generate only the follow-up question without any additional comments or explanations."
+    )
+    
+    return await llm.generate_completion(prompt, max_tokens=200) 

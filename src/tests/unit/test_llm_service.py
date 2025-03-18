@@ -8,7 +8,7 @@ from unittest import mock
 import aiohttp
 from aiohttp.client_reqrep import ClientResponse
 
-from src.ai.services import LLMService, get_llm_service
+from src.ai.llm import LLMService, get_llm_service
 
 
 class TestLLMService:

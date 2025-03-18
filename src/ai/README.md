@@ -1,87 +1,103 @@
-# AI Services Module
+# AI Module
 
-This module provides AI services for the interview platform using a simplified, direct approach.
+This module provides AI capabilities for the interview platform using a simplified, consolidated approach.
 
 ## Overview
 
-The AI services module has been simplified to use specific implementations directly rather than a factory pattern:
+The AI module has been completely streamlined:
 
-1. **Direct Service Access**: Services are accessed through simple getter functions
-2. **Single Provider**: Each AI capability uses a specific provider
-3. **Simplified Configuration**: Configuration focuses only on the APIs being used
+1. **Consolidated LLM File**: All language model functionality is in a single file
+2. **Direct API Access**: Uses Perplexity API directly for text generation
+3. **No Unnecessary Abstractions**: Removed interfaces and factory patterns
+4. **Higher-Level Utilities**: Includes interview-specific functions
 
-## Available Services
+## LLM Capabilities
 
-### LLM Service (Perplexity)
+The language model service in `llm.py` provides:
 
-The Language Model service provides text generation capabilities using Perplexity API:
-
-- Text completions for generating interview questions
-- Chat completions for multi-turn interactions
-- Token counting for estimating usage
-
-### Future Services (Coming Soon)
-
-- **Speech Recognition**: For converting speech to text
-- **Speech Synthesis**: For converting text to speech
-- **Sentiment Analysis**: For analyzing emotions in text/speech
-- **Embedding Service**: For vector embeddings and semantic search
+- **Basic Text Generation**: Generate completions for prompts
+- **Chat-Based Generation**: Support for multi-turn conversations
+- **Token Counting**: For tracking API usage
+- **Interview Utilities**: Functions for generating questions, evaluating answers, etc.
 
 ## How to Use
 
 ### 1. Configure Environment Variables
 
-Set the following environment variables in your `.env` file:
+Set the following in your `.env` file:
 
 ```bash
-# Perplexity API
+# Required for LLM functionality
 PERPLEXITY_API_KEY=your_perplexity_api_key
-PERPLEXITY_MODEL=pplx-70b-online  # Optional - defaults to pplx-70b-online
 ```
 
-### 2. Using the LLM Service
+### 2. Basic LLM Usage
 
 ```python
-from src.ai.services import get_llm_service
+from src.ai.llm import get_llm_service
 
 # Get the LLM service
-llm_service = get_llm_service()
+llm = get_llm_service()
 
-# Generate a completion
-result = await llm_service.generate_completion(
+# Generate completion
+result = await llm.generate_completion(
     prompt="Generate an interview question about Python.",
     max_tokens=200
 )
 
-# Generate a chat completion
+# Generate chat completion
 messages = [
     {"role": "system", "content": "You are an expert interviewer."},
-    {"role": "user", "content": "Ask me a question about microservices."}
+    {"role": "user", "content": "Ask me about microservices."}
 ]
-result = await llm_service.generate_chat_completion(
+result = await llm.generate_chat_completion(
     messages=messages,
     max_tokens=300
 )
 ```
 
-### 3. Running the Example
+### 3. Higher-Level Interview Functions
 
-Try the example script to test the LLM service:
+```python
+from src.ai.llm import (
+    generate_interview_question,
+    evaluate_interview_answer,
+    generate_follow_up_question
+)
+
+# Generate an interview question
+question = await generate_interview_question(
+    topic="Data Structures", 
+    difficulty="hard"
+)
+
+# Evaluate a candidate's answer
+evaluation = await evaluate_interview_answer(
+    question="What are binary search trees?",
+    answer="Binary search trees are data structures that allow fast lookup, insertion, and deletion..."
+)
+
+# Generate follow-up question
+follow_up = await generate_follow_up_question(
+    question="What are binary search trees?",
+    answer="Binary search trees are data structures that allow fast lookup, insertion, and deletion..."
+)
+```
+
+### 4. Running the Example
+
+Try the example script to see all capabilities:
 
 ```bash
 python -m src.ai.examples.llm_example
 ```
 
-## Setting the Perplexity API Key
+## Other AI Functions
 
-You can manually add your Perplexity API key to the `.env` file:
-
-```
-PERPLEXITY_API_KEY=your_perplexity_api_key_here
-```
+Additional AI capabilities like speech recognition, synthesis, and sentiment analysis will be added in the future following this same simplified approach.
 
 ## Best Practices
 
-- Handle potential exceptions from service methods
+- Handle exceptions from API calls
 - Consider implementing local caching for frequent requests
-- Use environment variables for API keys 
+- Use higher-level functions for interview-specific tasks 

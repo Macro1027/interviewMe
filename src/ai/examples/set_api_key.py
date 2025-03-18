@@ -19,8 +19,13 @@ def update_env_file(api_key: str):
     # Check if .env file exists
     if not env_file.exists():
         print(f"Error: .env file not found at {env_file}")
-        print("Please create a .env file in the project root directory first.")
-        return False
+        print("Creating a new .env file...")
+        with open(env_file, "w") as f:
+            f.write("# AI Interview Simulation Platform - Environment Variables\n\n")
+            f.write("# AI Provider Settings\n")
+            f.write(f"PERPLEXITY_API_KEY={api_key}\n")
+        print(f"Created new .env file with Perplexity API key")
+        return True
     
     # Read the current .env file
     with open(env_file, "r") as f:
@@ -76,6 +81,8 @@ def main():
     
     # Update the .env file
     if update_env_file(api_key):
+        print("You can now run the example script to test the LLM:")
+        print("python -m src.ai.examples.llm_example")
         return 0
     else:
         return 1

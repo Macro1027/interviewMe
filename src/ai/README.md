@@ -1,31 +1,31 @@
 # AI Services Module
 
-This module provides a collection of AI service implementations and a factory pattern for accessing them.
+This module provides AI services for the interview platform using a simplified, direct approach.
 
 ## Overview
 
-The AI services module is designed with the following principles:
+The AI services module has been simplified to use specific implementations directly rather than a factory pattern:
 
-1. **Interface-Based Design**: All services implement common interfaces
-2. **Factory Pattern**: Services are accessed through a factory to allow easy provider switching
-3. **Provider Flexibility**: Support for multiple AI service providers
-4. **Configuration-Driven**: Service selection based on environment configuration
+1. **Direct Service Access**: Services are accessed through simple getter functions
+2. **Single Provider**: Each AI capability uses a specific provider
+3. **Simplified Configuration**: Configuration focuses only on the APIs being used
 
 ## Available Services
 
-### Completion Services
+### LLM Service (Perplexity)
 
-Text generation services for creating interview questions, responses, and other text content.
+The Language Model service provides text generation capabilities using Perplexity API:
 
-- **OpenAI** (`OpenAIService`): Uses OpenAI's GPT models
-- **Perplexity** (`PerplexityService`): Uses Perplexity API for text completions
+- Text completions for generating interview questions
+- Chat completions for multi-turn interactions
+- Token counting for estimating usage
 
 ### Future Services (Coming Soon)
 
-- **Embedding Services**: For vector embeddings and semantic search
-- **Speech Recognition Services**: For converting speech to text
-- **Speech Synthesis Services**: For converting text to speech
-- **Sentiment Analysis Services**: For analyzing emotions in text/speech
+- **Speech Recognition**: For converting speech to text
+- **Speech Synthesis**: For converting text to speech
+- **Sentiment Analysis**: For analyzing emotions in text/speech
+- **Embedding Service**: For vector embeddings and semantic search
 
 ## How to Use
 
@@ -34,38 +34,21 @@ Text generation services for creating interview questions, responses, and other 
 Set the following environment variables in your `.env` file:
 
 ```bash
-# OpenAI
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_ORGANIZATION=your_openai_org_id
-
-# Perplexity
+# Perplexity API
 PERPLEXITY_API_KEY=your_perplexity_api_key
-
-# Provider Selection
-COMPLETION_PROVIDER=perplexity  # Options: openai, perplexity
+PERPLEXITY_MODEL=pplx-70b-online  # Optional - defaults to pplx-70b-online
 ```
 
-### 2. Setting the Perplexity API Key
-
-You can use the helper script to set your Perplexity API key:
-
-```bash
-python -m src.ai.examples.set_perplexity_api_key YOUR_API_KEY_HERE
-```
-
-### 3. Using the Completion Service
+### 2. Using the LLM Service
 
 ```python
-from src.ai.factory import get_completion_service
+from src.ai.services import get_llm_service
 
-# Get the default provider (from environment settings)
-completion_service = get_completion_service()
-
-# Or specify a provider explicitly
-completion_service = get_completion_service(provider="perplexity")
+# Get the LLM service
+llm_service = get_llm_service()
 
 # Generate a completion
-result = await completion_service.generate_completion(
+result = await llm_service.generate_completion(
     prompt="Generate an interview question about Python.",
     max_tokens=200
 )
@@ -75,31 +58,30 @@ messages = [
     {"role": "system", "content": "You are an expert interviewer."},
     {"role": "user", "content": "Ask me a question about microservices."}
 ]
-result = await completion_service.generate_chat_completion(
+result = await llm_service.generate_chat_completion(
     messages=messages,
     max_tokens=300
 )
 ```
 
-### 4. Running the Example
+### 3. Running the Example
 
-Try the example script to test the Perplexity service:
+Try the example script to test the LLM service:
 
 ```bash
-python -m src.ai.examples.perplexity_example
+python -m src.ai.examples.llm_example
 ```
 
-## Adding New Service Providers
+## Setting the Perplexity API Key
 
-To add a new service provider:
+You can manually add your Perplexity API key to the `.env` file:
 
-1. Create a new implementation class that follows the appropriate interface
-2. Register the implementation in `factory.py`
-3. Update the environment variable settings in `config.py`
+```
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+```
 
 ## Best Practices
 
-- Always use the factory pattern to get service instances
 - Handle potential exceptions from service methods
-- Configure fallback mechanisms for critical operations
-- Use environment variables for API keys and provider selection 
+- Consider implementing local caching for frequent requests
+- Use environment variables for API keys 

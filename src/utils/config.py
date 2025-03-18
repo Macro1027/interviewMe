@@ -117,12 +117,8 @@ class Settings(BaseSettings):
     PERPLEXITY_API_KEY: Optional[str] = None
     PERPLEXITY_MODEL: str = "pplx-70b-online"
     
-    # AI Provider Selection
-    COMPLETION_PROVIDER: Optional[str] = "openai"  # Options: openai, perplexity
-    EMBEDDING_PROVIDER: Optional[str] = "openai"
-    SPEECH_RECOGNITION_PROVIDER: Optional[str] = "google"
-    SPEECH_SYNTHESIS_PROVIDER: Optional[str] = "elevenlabs"
-    SENTIMENT_ANALYSIS_PROVIDER: Optional[str] = "openai"
+    # AI Provider Selection - REMOVED
+    # We now use directly implemented services without factory pattern
     
     class Config:
         """Configuration for the settings."""

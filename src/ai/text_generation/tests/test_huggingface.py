@@ -1,176 +1,171 @@
 """
-Unit tests for Hugging Face text generation integration.
-
-This file contains tests for generating text using the Hugging Face API.
+Unit tests for the Hugging Face implementation of the text generation service.
 """
-import pytest
+
 import json
+import pytest
+import aiohttp
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.ai.text_generation.text_generation import TextGenerationService
+# Import the service to test
+import sys
+from pathlib import Path
+
+# Add the parent directory to sys.path to import the module properly
+parent_dir = str(Path(__file__).parent.parent.absolute())
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from text_generation import TextGenerationService
 
 
 @pytest.fixture
-def mock_aiohttp_session():
-    """Mock aiohttp.ClientSession for async tests."""
-    with patch('aiohttp.ClientSession') as mock_session:
-        # Setup mock response
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=[{
-            'generated_text': 'This is a test response from Hugging Face API'
-        }])
-        mock_response.__aenter__.return_value = mock_response
-        
-        # Setup mock session post
-        mock_session_instance = MagicMock()
-        mock_session_instance.post.return_value = mock_response
-        mock_session.return_value.__aenter__.return_value = mock_session_instance
-        
+async def mock_aiohttp_session():
+    """Mock aiohttp ClientSession for testing."""
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json.return_value = [{"generated_text": "This is a test response from Hugging Face API"}]
+    mock_response.text.return_value = "Test response"
+    
+    mock_session = AsyncMock()
+    mock_session.post.return_value.__aenter__.return_value = mock_response
+    
+    with patch('aiohttp.ClientSession', return_value=mock_session):
         yield mock_session
 
 
 @pytest.fixture
 def text_generation_service():
-    """Create a TextGenerationService with mocked API key."""
-    with patch('src.utils.config.get_settings') as mock_settings:
-        mock_settings.return_value.HUGGINGFACE_API_KEY = "mock-api-key"
-        mock_settings.return_value.HUGGINGFACE_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-        mock_settings.return_value.LLM_PROVIDER = "huggingface"
-        
-        service = TextGenerationService(api_key="mock-api-key", provider="huggingface")
-        yield service
+    """Create a TextGenerationService instance for testing."""
+    service = TextGenerationService(
+        api_key="mock-api-key",
+        provider="huggingface",
+        model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+    )
+    return service
 
 
 class TestHuggingFaceTextGeneration:
-    """Tests for Hugging Face text generation."""
+    """Tests for the Hugging Face text generation implementation."""
     
+    @pytest.mark.asyncio
     async def test_generate_completion(self, text_generation_service, mock_aiohttp_session):
-        """Test generating a simple text completion."""
-        # Call the method
-        result = await text_generation_service.generate_completion(
-            prompt="Generate a test response",
-            max_tokens=100
-        )
+        """Test generating a text completion."""
+        result = await text_generation_service.generate_completion("What is a RESTful API?")
         
-        # Verify result
+        # Check the API call parameters
+        mock_aiohttp_session.post.assert_called_once()
+        args, kwargs = mock_aiohttp_session.post.call_args
+        
+        # The URL should include the model name
+        assert "mistralai/Mixtral-8x7B-Instruct-v0.1" in args[0]
+        
+        # Check the payload
+        assert kwargs["json"]["inputs"] == "What is a RESTful API?"
+        assert "temperature" in kwargs["json"]["parameters"]
+        assert "max_new_tokens" in kwargs["json"]["parameters"]
+        
+        # Check the result
         assert result == "This is a test response from Hugging Face API"
-        
-        # Verify the API was called with expected parameters
-        mock_session = mock_aiohttp_session.return_value.__aenter__.return_value
-        call_args = mock_session.post.call_args
-        
-        # First arg is URL
-        url = call_args[0][0]
-        assert "mistralai/Mixtral-8x7B-Instruct-v0.1" in url
-        
-        # Check payload
-        payload = call_args[1]['json']
-        assert "Generate a test response" in payload['inputs']
-        assert payload['parameters']['max_new_tokens'] == 100
-        assert payload['parameters']['return_full_text'] is False
-        
-        # Check headers
-        headers = call_args[1]['headers']
-        assert headers['Authorization'] == "Bearer mock-api-key"
     
+    @pytest.mark.asyncio
     async def test_generate_chat_completion(self, text_generation_service, mock_aiohttp_session):
-        """Test generating a chat completion with multiple messages."""
-        # Test data
+        """Test generating a chat completion."""
         messages = [
-            {"role": "system", "content": "You are an AI assistant."},
-            {"role": "user", "content": "Tell me about Python."},
-            {"role": "assistant", "content": "Python is a programming language."},
-            {"role": "user", "content": "What are its key features?"}
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is a RESTful API?"}
         ]
         
-        # Call the method
-        result = await text_generation_service.generate_chat_completion(
-            messages=messages,
-            max_tokens=200
-        )
+        result = await text_generation_service.generate_chat_completion(messages)
         
-        # Verify result
+        # Check the API call parameters
+        mock_aiohttp_session.post.assert_called_once()
+        args, kwargs = mock_aiohttp_session.post.call_args
+        
+        # The URL should include the model name
+        assert "mistralai/Mixtral-8x7B-Instruct-v0.1" in args[0]
+        
+        # Check that the payload includes the formatted messages
+        assert "<|system|>" in kwargs["json"]["inputs"]
+        assert "<|user|>" in kwargs["json"]["inputs"]
+        assert "<|assistant|>" in kwargs["json"]["inputs"]
+        assert "You are a helpful assistant" in kwargs["json"]["inputs"]
+        assert "What is a RESTful API?" in kwargs["json"]["inputs"]
+        
+        # Check the result
         assert result == "This is a test response from Hugging Face API"
-        
-        # Verify the API was called with expected parameters
-        mock_session = mock_aiohttp_session.return_value.__aenter__.return_value
-        call_args = mock_session.post.call_args
-        
-        # Check URL
-        url = call_args[0][0]
-        assert "mistralai/Mixtral-8x7B-Instruct-v0.1" in url
-        
-        # Check payload
-        payload = call_args[1]['json']
-        # Verify that all messages were combined into the prompt
-        assert "You are an AI assistant." in payload['inputs']
-        assert "Tell me about Python." in payload['inputs']
-        assert "Python is a programming language." in payload['inputs']
-        assert "What are its key features?" in payload['inputs']
-        
-        # Check generation parameters
-        assert payload['parameters']['max_new_tokens'] == 200
     
+    @pytest.mark.asyncio
     async def test_api_error_handling(self, text_generation_service):
         """Test error handling for API failures."""
-        with patch('aiohttp.ClientSession') as mock_session:
-            # Setup mock response for error
-            mock_response = AsyncMock()
-            mock_response.status = 400
-            mock_response.text = AsyncMock(return_value="Invalid request")
-            mock_response.__aenter__.return_value = mock_response
-            
-            # Setup mock session post
-            mock_session_instance = MagicMock()
-            mock_session_instance.post.return_value = mock_response
-            mock_session.return_value.__aenter__.return_value = mock_session_instance
-            
-            # Call the method and expect exception
+        # Create a mock for error response
+        mock_response = AsyncMock()
+        mock_response.status = 400
+        mock_response.text.return_value = "Bad Request"
+        
+        mock_session = AsyncMock()
+        mock_session.post.return_value.__aenter__.return_value = mock_response
+        
+        with patch('aiohttp.ClientSession', return_value=mock_session):
             with pytest.raises(Exception) as excinfo:
-                await text_generation_service.generate_completion(
-                    prompt="Generate a test response",
-                    max_tokens=100
-                )
+                await text_generation_service.generate_completion("What is a RESTful API?")
             
-            # Verify exception details
-            assert "Hugging Face API returned error: 400" in str(excinfo.value)
+            assert "Hugging Face API error: 400" in str(excinfo.value)
     
+    @pytest.mark.asyncio
     async def test_fallback_to_perplexity(self, text_generation_service):
         """Test fallback to Perplexity when Hugging Face fails."""
-        # First mock Hugging Face request to fail
-        with patch('aiohttp.ClientSession') as mock_session:
-            # Setup mock response for error
-            mock_response = AsyncMock()
-            mock_response.status = 503  # Service unavailable
-            mock_response.text = AsyncMock(return_value="Service unavailable")
-            mock_response.__aenter__.return_value = mock_response
-            
-            # Setup mock session post
-            mock_session_instance = MagicMock()
-            mock_session_instance.post.return_value = mock_response
-            mock_session.return_value.__aenter__.return_value = mock_session_instance
-            
-            # Now mock the retry with Perplexity API to succeed
+        # First make Hugging Face fail
+        mock_error_response = AsyncMock()
+        mock_error_response.status = 500
+        mock_error_response.text.return_value = "Internal Server Error"
+        
+        # Then make Perplexity succeed
+        mock_success_response = AsyncMock()
+        mock_success_response.status = 200
+        mock_success_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Fallback response from Perplexity"
+                    }
+                }
+            ]
+        }
+        
+        # Create a session that first returns the error response, then the success response
+        mock_session = AsyncMock()
+        mock_session.post.side_effect = [
+            AsyncMock(__aenter__=AsyncMock(return_value=mock_error_response)),
+            AsyncMock(__aenter__=AsyncMock(return_value=mock_success_response))
+        ]
+        
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            # Mock the TextGenerationService._generate_perplexity_completion method
             with patch.object(
-                text_generation_service, 
-                '_generate_perplexity_chat_completion',
-                new_callable=AsyncMock
+                TextGenerationService, 
+                '_generate_perplexity_completion',
+                return_value="Fallback response from Perplexity"
             ) as mock_perplexity:
-                # Setup mock successful response from Perplexity
-                mock_perplexity.return_value = "Fallback response from Perplexity"
+                result = await text_generation_service.generate_completion("What is a RESTful API?")
                 
-                # Call method with fallback enabled
-                result = await text_generation_service.generate_completion(
-                    prompt="Generate a test response",
-                    max_tokens=100,
-                    use_fallback=True
-                )
-                
-                # Verify result is from fallback
-                assert result == "Fallback response from Perplexity"
-                
-                # Verify fallback was called with expected parameters
+                # Verify the fallback was called
                 mock_perplexity.assert_called_once()
-                call_args = mock_perplexity.call_args[1]
-                assert call_args['messages'][0]['content'] == "Generate a test response" 
+                
+                # Check the result is from the fallback
+                assert result == "Fallback response from Perplexity"
+    
+    @pytest.mark.asyncio
+    async def test_different_model_parameters(self, text_generation_service, mock_aiohttp_session):
+        """Test with different model parameters."""
+        # Call with custom parameters
+        await text_generation_service.generate_completion(
+            "What is a RESTful API?",
+            temperature=0.9,
+            max_tokens=2000
+        )
+        
+        # Check the custom parameters were used
+        args, kwargs = mock_aiohttp_session.post.call_args
+        assert kwargs["json"]["parameters"]["temperature"] == 0.9
+        assert kwargs["json"]["parameters"]["max_new_tokens"] == 2000 

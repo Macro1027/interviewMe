@@ -1,46 +1,33 @@
 # Perplexity API Configuration
 
-# API configuration
-api:
-  base_url: "https://api.perplexity.ai"
-  endpoint: "/chat/completions"
-  timeout: 30  # seconds
+# API endpoint
+api_url: "https://api.perplexity.ai/chat/completions"
 
-# Default model settings
+# Default model to use
 default_model: "pplx-70b-online"
+
+# Available models
 available_models:
-  - name: "pplx-70b-online"
-    description: "High-capability large language model with internet access"
-    max_tokens: 4096
-    context_window: 8192
-  - name: "mistral-7b-instruct"
-    description: "Compact but powerful instruction-tuned model"
-    max_tokens: 2048
-    context_window: 4096
-  - name: "llama-2-70b-chat"
-    description: "Meta's LLaMa 2 model optimized for chat"
-    max_tokens: 4096
-    context_window: 4096
-  - name: "codellama-34b-instruct"
-    description: "Specialized model for code generation and understanding"
-    max_tokens: 2048
-    context_window: 4096
+  - "pplx-7b-online"
+  - "pplx-70b-online"
+  - "pplx-7b-chat"
+  - "pplx-70b-chat"
+  - "llama-2-70b-chat"
+  - "mistral-7b-instruct"
+  - "mixtral-8x7b-instruct"
+
+# Retry configuration
+max_retries: 3
+retry_delay_seconds: 1
+retry_backoff_factor: 2
+
+# Rate limiting
+requests_per_minute: 50
 
 # Default generation parameters
-parameters:
+default_params:
   temperature: 0.7
+  max_tokens: 1000
   top_p: 0.9
-  frequency_penalty: 0.0
   presence_penalty: 0.0
-  max_tokens: 1024
-
-# Rate limiting settings
-rate_limits:
-  requests_per_minute: 60
-  tokens_per_minute: 50000
-
-# Fallback settings
-fallback:
-  enabled: true
-  retry_attempts: 3
-  retry_delay: 1.5  # seconds, with exponential backoff 
+  frequency_penalty: 0.0 

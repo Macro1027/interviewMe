@@ -1,372 +1,469 @@
 """
-Text Generation Service for the AI Interview Simulation Platform.
+Text Generation Service for AI Interview Simulation Platform.
 
-This module provides text generation capabilities using various LLM providers,
-with the default being Perplexity API.
+This module provides a unified interface for text generation using various
+language model providers such as Perplexity and Hugging Face.
 """
-from typing import Dict, List, Optional, Union, Any
+
+import os
 import json
+import yaml
+import logging
 import aiohttp
+import asyncio
+from typing import Dict, List, Union, Optional, Any, Tuple
+from pathlib import Path
 
-from src.utils.config import get_settings
-from src.utils.logger import setup_logger
-
-# Initialize logger and settings
-logger = setup_logger(__name__)
-settings = get_settings()
-
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class TextGenerationService:
-    """
-    Service for text generation using LLM providers (default: Perplexity API).
-    
-    This service provides methods for generating text completions and
-    chat completions using LLM APIs.
-    """
+    """A service for generating text using various language model providers."""
 
-    def __init__(self, api_key: Optional[str] = None, provider: str = "perplexity"):
+    def __init__(
+        self, 
+        api_key: str = None, 
+        provider: str = "perplexity",
+        model: str = None,
+        temperature: float = 0.7,
+        max_tokens: int = 1000,
+        config_path: str = None
+    ):
         """
         Initialize the text generation service.
         
         Args:
-            api_key: Optional API key override. If not provided, uses the key from environment variables.
-            provider: The LLM provider to use ('perplexity', 'huggingface').
+            api_key: API key for the provider. If None, attempts to read from environment.
+            provider: The provider to use ("perplexity" or "huggingface").
+            model: The model to use. If None, uses the default from config.
+            temperature: Controls randomness. Higher is more random.
+            max_tokens: Maximum number of tokens to generate.
+            config_path: Path to the config directory. If None, uses the default.
         """
         self.provider = provider.lower()
         
-        # Select API configuration based on provider
-        if self.provider == "perplexity":
-            self.api_key = api_key or settings.PERPLEXITY_API_KEY
-            self.api_base_url = "https://api.perplexity.ai"
-            self.model = settings.PERPLEXITY_MODEL or "pplx-70b-online"
-            
-            if not self.api_key:
-                logger.warning("No Perplexity API key provided. Text generation service will not work correctly.")
-        elif self.provider == "huggingface":
-            self.api_key = api_key or settings.HUGGINGFACE_API_KEY
-            self.api_base_url = "https://api-inference.huggingface.co/models"
-            self.model = settings.HUGGINGFACE_MODEL or "mistralai/Mixtral-8x7B-Instruct-v0.1"
-            
-            if not self.api_key:
-                logger.warning("No Hugging Face API key provided. Text generation service will not work correctly.")
+        # Load config
+        if config_path is None:
+            config_dir = Path(__file__).parent / "config"
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Supported providers are 'perplexity' and 'huggingface'.")
-    
-    async def generate_completion(self, prompt: str, max_tokens: int = 1024, **kwargs) -> str:
+            config_dir = Path(config_path)
+        
+        config_file = config_dir / f"{self.provider}.yaml"
+        if not config_file.exists():
+            raise ValueError(f"Config file not found: {config_file}")
+        
+        with open(config_file, "r") as f:
+            self.config = yaml.safe_load(f)
+        
+        # Set API key
+        if api_key is None:
+            env_var = f"{self.provider.upper()}_API_KEY"
+            api_key = os.environ.get(env_var)
+            if api_key is None:
+                raise ValueError(f"API key not provided and {env_var} environment variable not set")
+        self.api_key = api_key
+        
+        # Set model
+        if model is None:
+            model = self.config.get("default_model")
+        self.model = model
+        
+        # Set generation parameters
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        
+        # Session for API calls
+        self._session = None
+        
+        logger.info(f"Initialized TextGenerationService with provider: {self.provider}, model: {self.model}")
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create an aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self):
+        """Close the aiohttp session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def generate_completion(self, prompt: str, **kwargs) -> str:
         """
-        Generate a text completion.
+        Generate a text completion for the given prompt.
         
         Args:
-            prompt: The prompt to generate completion for
-            max_tokens: Maximum number of tokens to generate
-            **kwargs: Additional parameters to pass to the API
+            prompt: The prompt to generate a completion for.
+            **kwargs: Additional parameters to pass to the provider.
             
         Returns:
-            str: Generated text completion
-            
-        Raises:
-            Exception: If the API request fails
+            Generated text completion.
         """
-        # Convert to a chat completion with a single user message
-        messages = [{"role": "user", "content": prompt}]
-        return await self.generate_chat_completion(messages, max_tokens, **kwargs)
-    
-    async def generate_chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
-        max_tokens: int = 1024, 
-        **kwargs
-    ) -> str:
-        """
-        Generate a chat completion.
-        
-        Args:
-            messages: List of message objects (role, content)
-            max_tokens: Maximum number of tokens to generate
-            **kwargs: Additional parameters to pass to the API
-            
-        Returns:
-            str: Generated text as response to the chat
-            
-        Raises:
-            Exception: If the API request fails
-        """
-        if self.provider == "perplexity":
-            return await self._generate_perplexity_chat_completion(messages, max_tokens, **kwargs)
-        elif self.provider == "huggingface":
-            return await self._generate_huggingface_chat_completion(messages, max_tokens, **kwargs)
-        else:
-            raise ValueError(f"Unsupported provider: {self.provider}")
-    
-    async def _generate_perplexity_chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
-        max_tokens: int = 1024, 
-        **kwargs
-    ) -> str:
-        """
-        Generate a chat completion using Perplexity API.
-        
-        Args:
-            messages: List of message objects (role, content)
-            max_tokens: Maximum number of tokens to generate
-            **kwargs: Additional parameters to pass to the API
-        """
-        # Extract or use default model
-        model = kwargs.pop("model", self.model)
-        
-        # Prepare the request
-        url = f"{self.api_base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # Merge default parameters with provided kwargs
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-        }
-        
-        # Add any additional parameters from kwargs
-        for key, value in kwargs.items():
-            if key not in ["api_key", "messages", "model"]:
-                payload[key] = value
-        
-        logger.debug(f"Sending request to Perplexity API with model: {model}")
-        
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=payload) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Perplexity API error: {response.status}, {error_text}")
-                        raise Exception(f"Perplexity API returned error: {response.status}, {error_text}")
-                    
-                    result = await response.json()
-                    
-                    # Extract the generated text from the response
-                    try:
-                        generated_text = result["choices"][0]["message"]["content"]
-                        logger.debug("Successfully generated text from Perplexity API")
-                        return generated_text
-                    except (KeyError, IndexError) as e:
-                        logger.error(f"Error parsing Perplexity API response: {e}, Response: {result}")
-                        raise Exception(f"Failed to parse Perplexity API response: {e}")
-        
-        except aiohttp.ClientError as e:
-            logger.error(f"Perplexity API request failed: {e}")
-            raise Exception(f"Perplexity API request failed: {e}")
-    
-    async def _generate_huggingface_chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
-        max_tokens: int = 1024, 
-        **kwargs
-    ) -> str:
+            if self.provider == "perplexity":
+                return await self._generate_perplexity_completion(prompt, **kwargs)
+            elif self.provider == "huggingface":
+                return await self._generate_huggingface_completion(prompt, **kwargs)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+        except Exception as e:
+            logger.error(f"Error generating completion: {e}")
+            # Try fallback if primary provider fails
+            if self.provider == "perplexity":
+                logger.info("Falling back to Hugging Face")
+                old_provider = self.provider
+                self.provider = "huggingface"
+                try:
+                    result = await self._generate_huggingface_completion(prompt, **kwargs)
+                    self.provider = old_provider
+                    return result
+                except Exception as fallback_error:
+                    self.provider = old_provider
+                    logger.error(f"Fallback also failed: {fallback_error}")
+                    raise
+            elif self.provider == "huggingface":
+                logger.info("Falling back to Perplexity")
+                old_provider = self.provider
+                self.provider = "perplexity"
+                try:
+                    result = await self._generate_perplexity_completion(prompt, **kwargs)
+                    self.provider = old_provider
+                    return result
+                except Exception as fallback_error:
+                    self.provider = old_provider
+                    logger.error(f"Fallback also failed: {fallback_error}")
+                    raise
+            raise
+
+    async def generate_chat_completion(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """
-        Generate a chat completion using Hugging Face API.
+        Generate a chat completion for the given messages.
         
         Args:
-            messages: List of message objects (role, content)
-            max_tokens: Maximum number of tokens to generate
-            **kwargs: Additional parameters to pass to the API
+            messages: List of message objects with 'role' and 'content' keys.
+            **kwargs: Additional parameters to pass to the provider.
+            
+        Returns:
+            Generated chat completion.
         """
-        # Extract or use default model
-        model = kwargs.pop("model", self.model)
+        try:
+            if self.provider == "perplexity":
+                return await self._generate_perplexity_chat(messages, **kwargs)
+            elif self.provider == "huggingface":
+                return await self._generate_huggingface_chat(messages, **kwargs)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+        except Exception as e:
+            logger.error(f"Error generating chat completion: {e}")
+            # Try fallback if primary provider fails
+            if self.provider == "perplexity":
+                logger.info("Falling back to Hugging Face")
+                old_provider = self.provider
+                self.provider = "huggingface"
+                try:
+                    result = await self._generate_huggingface_chat(messages, **kwargs)
+                    self.provider = old_provider
+                    return result
+                except Exception as fallback_error:
+                    self.provider = old_provider
+                    logger.error(f"Fallback also failed: {fallback_error}")
+                    raise
+            elif self.provider == "huggingface":
+                logger.info("Falling back to Perplexity")
+                old_provider = self.provider
+                self.provider = "perplexity"
+                try:
+                    result = await self._generate_perplexity_chat(messages, **kwargs)
+                    self.provider = old_provider
+                    return result
+                except Exception as fallback_error:
+                    self.provider = old_provider
+                    logger.error(f"Fallback also failed: {fallback_error}")
+                    raise
+            raise
+
+    async def _generate_perplexity_completion(self, prompt: str, **kwargs) -> str:
+        """Generate a text completion using the Perplexity API."""
+        session = await self._get_session()
         
-        # Prepare the request
-        url = f"{self.api_base_url}/{model}"
+        api_url = self.config.get("api_url", "https://api.perplexity.ai/chat/completions")
+        
+        temperature = kwargs.get("temperature", self.temperature)
+        max_tokens = kwargs.get("max_tokens", self.max_tokens)
+        
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
-        # Format messages for Hugging Face
-        # Convert chat format to prompt text
+        async with session.post(api_url, json=payload, headers=headers) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(f"Perplexity API error: {response.status} - {error_text}")
+                
+            result = await response.json()
+            return result["choices"][0]["message"]["content"]
+
+    async def _generate_perplexity_chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Generate a chat completion using the Perplexity API."""
+        session = await self._get_session()
+        
+        api_url = self.config.get("api_url", "https://api.perplexity.ai/chat/completions")
+        
+        temperature = kwargs.get("temperature", self.temperature)
+        max_tokens = kwargs.get("max_tokens", self.max_tokens)
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        async with session.post(api_url, json=payload, headers=headers) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(f"Perplexity API error: {response.status} - {error_text}")
+                
+            result = await response.json()
+            return result["choices"][0]["message"]["content"]
+
+    async def _generate_huggingface_completion(self, prompt: str, **kwargs) -> str:
+        """Generate a text completion using the Hugging Face API."""
+        session = await self._get_session()
+        
+        api_url = f"{self.config.get('api_url', 'https://api-inference.huggingface.co/models/')}{self.model}"
+        
+        temperature = kwargs.get("temperature", self.temperature)
+        max_tokens = kwargs.get("max_tokens", self.max_tokens)
+        
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "temperature": temperature,
+                "max_new_tokens": max_tokens,
+                "return_full_text": False
+            }
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        async with session.post(api_url, json=payload, headers=headers) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(f"Hugging Face API error: {response.status} - {error_text}")
+                
+            result = await response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "")
+            return result.get("generated_text", "")
+
+    async def _generate_huggingface_chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Generate a chat completion using the Hugging Face API."""
+        # Format the messages for Hugging Face
         prompt = ""
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
+        for message in messages:
+            role = message.get("role", "").lower()
+            content = message.get("content", "")
+            
             if role == "system":
                 prompt += f"<|system|>\n{content}\n"
             elif role == "user":
                 prompt += f"<|user|>\n{content}\n"
             elif role == "assistant":
                 prompt += f"<|assistant|>\n{content}\n"
-            else:
-                prompt += f"{content}\n"
         
-        # Add the final assistant prompt
         prompt += "<|assistant|>\n"
         
-        # Prepare payload
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": max_tokens,
-                "return_full_text": False
-            }
-        }
-        
-        # Add any additional parameters from kwargs
-        for key, value in kwargs.items():
-            if key not in ["api_key", "model"]:
-                payload["parameters"][key] = value
-        
-        logger.debug(f"Sending request to Hugging Face API with model: {model}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=payload) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Hugging Face API error: {response.status}, {error_text}")
-                        raise Exception(f"Hugging Face API returned error: {response.status}, {error_text}")
-                    
-                    result = await response.json()
-                    
-                    # Extract the generated text from the response
-                    try:
-                        if isinstance(result, list) and len(result) > 0:
-                            generated_text = result[0].get("generated_text", "")
-                        else:
-                            generated_text = result.get("generated_text", "")
-                        
-                        logger.debug("Successfully generated text from Hugging Face API")
-                        return generated_text
-                    except Exception as e:
-                        logger.error(f"Error parsing Hugging Face API response: {e}, Response: {result}")
-                        raise Exception(f"Failed to parse Hugging Face API response: {e}")
-        
-        except aiohttp.ClientError as e:
-            logger.error(f"Hugging Face API request failed: {e}")
-            raise Exception(f"Hugging Face API request failed: {e}")
-    
-    async def count_tokens(self, text: str) -> int:
-        """
-        Count the number of tokens in the given text.
-        
-        Args:
-            text: The text to count tokens for
-            
-        Returns:
-            int: Estimated token count
-        """
-        # Simple approximation: assume average of 4 characters per token
-        return len(text) // 4 + 1
+        return await self._generate_huggingface_completion(prompt, **kwargs)
 
 
-# Singleton instance for the text generation service
-_text_generation_service = None
-
-
-async def get_text_generation_service() -> TextGenerationService:
+async def generate_interview_question(
+    service: TextGenerationService,
+    topic: str,
+    difficulty: str = "medium"
+) -> str:
     """
-    Get or create the text generation service singleton.
-    
-    Returns:
-        A configured TextGenerationService instance.
-    """
-    global _text_generation_service
-    
-    if _text_generation_service is None:
-        # Create service with default provider
-        provider = settings.LLM_PROVIDER or "perplexity"
-        _text_generation_service = TextGenerationService(provider=provider)
-    
-    return _text_generation_service
-
-
-# Utility functions for interview-specific text generation tasks
-
-async def generate_interview_question(topic: str, difficulty: str = "medium") -> str:
-    """
-    Generate an interview question on a specific topic with specified difficulty.
+    Generate an interview question on a specific topic.
     
     Args:
-        topic: The topic for the interview question (e.g., "Python", "Algorithms", "System Design")
-        difficulty: The difficulty level ("easy", "medium", "hard")
+        service: The TextGenerationService to use.
+        topic: The topic for the interview question.
+        difficulty: The difficulty level (easy, medium, hard).
         
     Returns:
-        str: Generated interview question
+        Generated interview question.
     """
-    service = await get_text_generation_service()
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an expert interviewer. Generate a realistic and challenging interview question."
+        },
+        {
+            "role": "user",
+            "content": f"Create an interview question about {topic} at {difficulty} difficulty level. The question should assess the candidate's knowledge and problem-solving skills."
+        }
+    ]
     
-    prompt = (
-        f"Generate a {difficulty} difficulty interview question about {topic}. "
-        f"The question should be challenging but clear, and test the candidate's knowledge and problem-solving skills. "
-        f"Include only the question, without any additional explanation or answer."
-    )
-    
-    return await service.generate_completion(prompt, max_tokens=300)
+    return await service.generate_chat_completion(messages)
 
 
-async def evaluate_interview_answer(question: str, answer: str) -> Dict[str, Any]:
+async def evaluate_answer(
+    service: TextGenerationService,
+    question: str,
+    answer: str,
+    topic: str
+) -> Dict[str, Any]:
     """
     Evaluate a candidate's answer to an interview question.
     
     Args:
-        question: The interview question that was asked
-        answer: The candidate's answer to evaluate
+        service: The TextGenerationService to use.
+        question: The interview question.
+        answer: The candidate's answer.
+        topic: The topic area being assessed.
         
     Returns:
-        Dict[str, Any]: Evaluation results including score, feedback, and areas of improvement
+        Dictionary containing evaluation details.
     """
-    service = await get_text_generation_service()
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an expert in evaluating interview responses. Provide a detailed and fair assessment."
+        },
+        {
+            "role": "user",
+            "content": f"""
+            Question: {question}
+            
+            Candidate's Answer: {answer}
+            
+            Evaluate the candidate's answer to this {topic} question. Provide:
+            1. A score from 1-10
+            2. Specific feedback
+            3. Key strengths
+            4. Areas for improvement
+            
+            Format your response as a JSON object with fields: score, feedback, strengths, weaknesses.
+            """
+        }
+    ]
     
-    prompt = (
-        "You are an expert interviewer evaluating a candidate's response. "
-        "Provide a detailed but concise evaluation of the answer based on accuracy, "
-        "completeness, clarity, and depth of understanding.\n\n"
-        f"Question: {question}\n\n"
-        f"Candidate's Answer: {answer}\n\n"
-        "Provide your evaluation in JSON format with the following fields:\n"
-        "- score (0-10)\n"
-        "- feedback (brief general feedback)\n"
-        "- strengths (list of strong points)\n"
-        "- weaknesses (list of areas for improvement)\n"
-        "- suggestions (specific tips for improvement)"
-    )
+    response = await service.generate_chat_completion(messages)
     
-    response = await service.generate_completion(prompt, max_tokens=500)
-    
-    # Parse the JSON response
     try:
-        return json.loads(response)
+        # Try to parse JSON response
+        evaluation = json.loads(response)
+        return evaluation
     except json.JSONDecodeError:
-        logger.error(f"Failed to parse evaluation as JSON: {response}")
-        # Return a basic structure if parsing fails
+        # Fallback to text-based response if JSON parsing fails
+        logger.warning("Failed to parse JSON evaluation, returning raw text")
         return {
-            "score": 5,
-            "feedback": "Unable to parse detailed evaluation. The response was: " + response[:100] + "...",
+            "score": 0,
+            "feedback": response,
             "strengths": [],
-            "weaknesses": ["Unable to analyze properly"],
-            "suggestions": ["Please try again or rephrase your answer"]
+            "weaknesses": []
         }
 
 
-async def generate_follow_up_question(question: str, answer: str) -> str:
+async def generate_followup_question(
+    service: TextGenerationService,
+    original_question: str,
+    answer: str,
+    topic: str
+) -> str:
     """
-    Generate a follow-up question based on the candidate's answer.
+    Generate a follow-up question based on a candidate's answer.
     
     Args:
-        question: The original interview question
-        answer: The candidate's answer
+        service: The TextGenerationService to use.
+        original_question: The original interview question.
+        answer: The candidate's answer.
+        topic: The topic area being assessed.
         
     Returns:
-        str: A follow-up question to probe deeper or clarify the candidate's understanding
+        A relevant follow-up question.
     """
-    service = await get_text_generation_service()
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an expert interviewer. Generate a relevant follow-up question based on the candidate's response."
+        },
+        {
+            "role": "user",
+            "content": f"""
+            Original Question: {original_question}
+            
+            Candidate's Answer: {answer}
+            
+            Based on this response about {topic}, what would be a good follow-up question that:
+            1. Builds on something mentioned in their answer
+            2. Probes deeper into their understanding
+            3. Challenges them to think critically about the topic
+            """
+        }
+    ]
     
-    prompt = (
-        "You are an expert technical interviewer. Based on the candidate's answer to the previous question, "
-        "generate a thoughtful follow-up question that probes deeper into the topic or explores "
-        "related areas to better assess the candidate's knowledge and understanding.\n\n"
-        f"Original Question: {question}\n\n"
-        f"Candidate's Answer: {answer}\n\n"
-        "Generate only the follow-up question without any additional comments or explanations."
-    )
+    return await service.generate_chat_completion(messages)
+
+
+# Practical usage example (for documentation purposes)
+async def example_usage():
+    """Example usage of the TextGenerationService."""
+    # Initialize the service with environment variables
+    service = TextGenerationService()
     
-    return await service.generate_completion(prompt, max_tokens=200) 
+    try:
+        # Generate a simple completion
+        response = await service.generate_completion(
+            "Explain what a RESTful API is in 3 sentences."
+        )
+        print(f"Completion response: {response}")
+        
+        # Generate a chat completion
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "How can I prepare for a technical interview?"}
+        ]
+        
+        chat_response = await service.generate_chat_completion(messages)
+        print(f"Chat response: {chat_response}")
+        
+        # Generate an interview question
+        question = await generate_interview_question(service, "Python Programming", "intermediate")
+        print(f"Generated question: {question}")
+        
+        # Evaluate an answer
+        sample_answer = "Python is an interpreted language. It uses dynamic typing and garbage collection."
+        evaluation = await evaluate_answer(service, question, sample_answer, "Python")
+        print(f"Evaluation: {evaluation}")
+        
+        # Generate a follow-up question
+        followup = await generate_followup_question(service, question, sample_answer, "Python")
+        print(f"Follow-up question: {followup}")
+        
+    finally:
+        # Close the session
+        await service.close()
+
+
+if __name__ == "__main__":
+    # Run the example
+    asyncio.run(example_usage()) 
